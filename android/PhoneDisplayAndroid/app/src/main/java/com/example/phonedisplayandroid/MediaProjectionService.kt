@@ -18,6 +18,9 @@ import android.os.Build
 import android.os.IBinder
 import android.util.DisplayMetrics
 import android.util.Log
+import android.graphics.Bitmap
+import java.nio.ByteBuffer
+import androidx.core.graphics.createBitmap
 
 class MediaProjectionService : Service() {
 
@@ -161,12 +164,65 @@ class MediaProjectionService : Service() {
 
                 if (image != null) {
 
-                    Log.d(
-                        TAG,
-                        "FRAME RECEIVED: ${image.width}x${image.height}"
-                    )
+                    try {
 
-                    image.close()
+                        Log.d(
+                            TAG,
+                            "FRAME RECEIVED: ${image.width}x${image.height}"
+                        )
+
+                        val plane = image.planes[0]
+
+                        val pixelStride = plane.pixelStride
+                        val rowStride = plane.rowStride
+                        val rowPadding =
+                            rowStride - pixelStride * image.width
+
+                        val bitmapWidth =
+                            image.width + rowPadding / pixelStride
+
+                        val bitmap = createBitmap(bitmapWidth, image.height)
+
+                        val buffer: ByteBuffer =
+                            plane.buffer
+
+                        bitmap.copyPixelsFromBuffer(buffer)
+
+                        val croppedBitmap =
+                            Bitmap.createBitmap(
+                                bitmap,
+                                0,
+                                0,
+                                image.width,
+                                image.height
+                            )
+
+                        bitmap.recycle()
+
+                        FrameStore.publish(
+                            croppedBitmap
+                        )
+
+                        Log.d(
+                            TAG,
+                            "FRAME STORED: ${croppedBitmap.width}x${croppedBitmap.height}"
+                        )
+
+                        // We only need ONE frame for V1.2.
+                        stopProjection()
+
+                    } catch (e: Exception) {
+
+                        Log.e(
+                            TAG,
+                            "Failed to convert frame",
+                            e
+                        )
+
+                    } finally {
+
+                        image.close()
+                    }
                 }
 
             },
